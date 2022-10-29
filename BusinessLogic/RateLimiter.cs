@@ -3,6 +3,7 @@ using WeatherAPI.Models;
 using Microsoft.Extensions.Caching.Distributed;
 using WeatherAPI.Extensions;
 using WeatherAPI.Interfaces;
+using Microsoft.AspNetCore.Http;
 
 namespace WeatherAPI.BusinessLogic
 {
@@ -15,32 +16,29 @@ namespace WeatherAPI.BusinessLogic
             this.cache = cache;
         }
 
-        public async Task<bool> CanCall(HttpContext context, string apiKey)
+        public async Task<bool> CanCall(HttpContext context,string cacheKey)
         {
-            var endpoint = context.GetEndpoint();
             // read the LimitRequest attribute from the endpoint
-            var rateLimitDecorator = endpoint?.Metadata.GetMetadata<LimitRequest>();
+            var rateLimitDecorator = GetRateLimitRequest(context);
+
             if (rateLimitDecorator is null)
             {
                 return true;
             }
 
-            var key = GenerateClientKey(context, apiKey);
-            var clientStatistics = GetClientStatisticsByKey(key).Result;
+            var clientStatistics = GetClientStatisticsByKey(cacheKey).Result;
 
             // Check whether the request violates the rate limit policy
             if (clientStatistics != null
                 && DateTime.Now < clientStatistics.FirstResponseTime.AddSeconds(rateLimitDecorator.TimeWindow)
                 && clientStatistics.NumberofRequestsCompletedSuccessfully == rateLimitDecorator.MaxRequests)
             {
-                context.Response.StatusCode = (int)HttpStatusCode.TooManyRequests;
                 return false;
             }
-            else
-                await UpdateClientStatisticsAsync(key, rateLimitDecorator.MaxRequests);
 
             return true;
         }
+
 
         /// <summary>
         /// generate ClientKey from the context
@@ -62,13 +60,14 @@ namespace WeatherAPI.BusinessLogic
         private async Task<ClientStatistics> GetClientStatisticsByKey(string key)
          => await cache.GetCachedValueAsyn<ClientStatistics>(key);
 
-        private async Task UpdateClientStatisticsAsync(string key, int maxRequests)
+        public async Task UpdateClientStatisticsAsync(HttpContext context, string key)
         {
+            var rateLimitDecorator = GetRateLimitRequest(context);
             var clientStats = cache.GetCachedValueAsyn<ClientStatistics>(key).Result;
             if (clientStats is not null)
             {
                 clientStats.FirstResponseTime = DateTime.Now;
-                if (clientStats.NumberofRequestsCompletedSuccessfully == maxRequests)
+                if (clientStats.NumberofRequestsCompletedSuccessfully == rateLimitDecorator.MaxRequests)
                     clientStats.NumberofRequestsCompletedSuccessfully = 1;
                 else
                     clientStats.NumberofRequestsCompletedSuccessfully++;
@@ -85,6 +84,13 @@ namespace WeatherAPI.BusinessLogic
 
                 await cache.SetCachedValueAsync<ClientStatistics>(key, clientStatsNew);
             }
+        }
+
+        private LimitRequest? GetRateLimitRequest(HttpContext context)
+        {
+            var endpoint = context.GetEndpoint();
+            var rateLimitDecorator = endpoint?.Metadata?.GetMetadata<LimitRequest>();
+            return rateLimitDecorator;
         }
     }
 }

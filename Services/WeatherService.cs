@@ -1,4 +1,8 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.Extensions.ObjectPool;
+using Newtonsoft.Json;
+using System.Net;
+using System.Text;
 using WeatherAPI.Interfaces;
 using WeatherAPI.Models;
 
@@ -29,29 +33,71 @@ namespace WeatherAPI.Services
             string message = string.Empty;
             try
             {
-                var apiKey = weatherDataConfig.Key[0];
-                var client = new HttpClient();
-                var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={apiKey}";
-                //rate limit
-                if (await rateLimiter.CanCall(context, apiKey))
+                if (!weatherDataConfig.Keys.Any())
                 {
+                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                    return "No Api keys exist";
+                }
 
+                var keyTuple = await FindAKeyThatWorks(context);
+
+                //rate limit
+                if (await rateLimiter.CanCall(context, keyTuple.cacheKey))
+                {
+                    var client = new HttpClient();
+                    var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={keyTuple.apiKey}";
                     var respStr = await client.GetStringAsync(url);
                     if (!string.IsNullOrEmpty(respStr))
                         wd = JsonConvert.DeserializeObject<WeatherData>(respStr);
+
+                    await rateLimiter.UpdateClientStatisticsAsync(context, keyTuple.cacheKey);
                 }
                 else
-                    message = "The hourly limit has been exceeded";
+                {
+                    message = "The hourly limit has been exceeded"; 
+                    context.Response.StatusCode = (int)HttpStatusCode.TooManyRequests;
+                }
             }
             catch (Exception ex)
             {
                 message = ex.Message;
+                context.Response.StatusCode = (int)HttpStatusCode.InternalServerError; //we don't know without user parameter validation enhancement
             }
 
             if (wd != null)
-                message = string.Join(" and ", wd.Weather.Select(p=>p.Description));
+                message = string.Join(" and ", wd.Weather.Select(p => p.Description));
 
             return message;
+        }
+
+        /// <summary>
+        /// This is our key scheme - it looks at appsettings.json to see if we are allowed to try all the keys if one is used up
+        /// </summary>
+        /// <param name="context"></param>
+        /// <returns></returns>
+        private async Task<(string apiKey, string cacheKey)> FindAKeyThatWorks(HttpContext context)
+        {
+            string cacheKey = string.Empty;
+            string apiKey = string.Empty;
+            if (!weatherDataConfig.AllowAllKeys)
+            {
+                apiKey = weatherDataConfig.Keys[0];
+                cacheKey = rateLimiter.GenerateClientKey(context, apiKey);
+            }
+            else
+            {
+                foreach (var key in weatherDataConfig.Keys)
+                {
+                    apiKey = key;
+                    cacheKey = rateLimiter.GenerateClientKey(context, key);
+                    if (await rateLimiter.CanCall(context, cacheKey))
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return (apiKey,cacheKey);
         }
         
     }

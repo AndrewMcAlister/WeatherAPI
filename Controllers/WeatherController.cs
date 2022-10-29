@@ -23,6 +23,7 @@ namespace WeatherAPI.Controllers
         [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(string))]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [LimitRequest(MaxRequests = 5, TimeWindow = 3600)]
         public async Task<IActionResult> GetAsync(string country, string city)
         {
