@@ -60,8 +60,18 @@ namespace WeatherAPI.Services
             }
             catch (Exception ex)
             {
-                message = ex.Message;
-                context.Response.StatusCode = (int)HttpStatusCode.InternalServerError; //we don't know without user parameter validation enhancement
+                if (ex.Message.Contains("404"))
+                {
+                    //remote site incorrectly throws 404, not found (normally intended for missing web pages)
+                    //could be wrong user input or could be corrent, but no data, so not an error, use whatever status code the remote site gave us
+                    message = "No weather was found for that location";
+                    context.Response.StatusCode = (int)HttpStatusCode.NotFound;
+                }
+                else
+                {
+                    message = ex.Message;
+                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError; //we don't know without user parameter validation enhancement
+                }
             }
 
             if (wd != null)

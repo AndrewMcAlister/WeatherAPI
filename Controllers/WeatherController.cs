@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.IO.Pipes;
 using System.Net;
 using WeatherAPI.Interfaces;
 using WeatherAPI.Models;
@@ -20,26 +21,30 @@ namespace WeatherAPI.Controllers
         }
 
         [HttpGet]
-        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(string))]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(APIResponse<string>))]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         [LimitRequest(MaxRequests = 5, TimeWindow = 3600)]
-        public async Task<IActionResult> GetAsync(string country, string city)
+        public async Task<ActionResult> GetAsync(string country, string city)
         {
+            var apiResponse = new APIResponse<string>();
             try
             {
                 var weatherData = await weatherService.GetWeatherDescription(country, city, base.HttpContext);
-                if (weatherData != null)
-                    return Ok(weatherData);
+                var resp = new APIResponse<string>() { StatusCode = (HttpStatusCode)base.HttpContext.Response.StatusCode };
+                if (base.HttpContext.Response.StatusCode < 300)
+                    resp.Data = weatherData;
                 else
-                    return BadRequest("Please enter valid data");
+                    resp.ErrorMessage = weatherData;
+
+                return StatusCode(base.HttpContext.Response.StatusCode, resp);
             }
             catch (Exception ex)
             {
-                return (IActionResult)(new HttpRequestException(ex.Message, ex, HttpStatusCode.InternalServerError));
+                return StatusCode((int)HttpStatusCode.InternalServerError,ex.Message);
             }
-
         }
     }
 }
