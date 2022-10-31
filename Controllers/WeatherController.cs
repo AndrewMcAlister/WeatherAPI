@@ -33,11 +33,7 @@ namespace WeatherAPI.Controllers
             try
             {
                 var weatherData = await weatherService.GetWeatherDescription(country, city, base.HttpContext);
-                var resp = new APIResponse<string>() { StatusCode = (HttpStatusCode)base.HttpContext.Response.StatusCode };
-                if (base.HttpContext.Response.StatusCode < 300)
-                    resp.Data = weatherData;
-                else
-                    resp.ErrorMessage = weatherData;
+                var resp = new APIResponse<string>() { StatusCode = (HttpStatusCode)base.HttpContext.Response.StatusCode, Message= weatherData };
 
                 return StatusCode(base.HttpContext.Response.StatusCode, resp);
             }

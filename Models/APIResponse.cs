@@ -15,6 +15,6 @@ namespace WeatherAPI.Models
     {
         public T? Data { get; set; }
         public HttpStatusCode StatusCode { get; set; }
-        public string? ErrorMessage { get; set; }
+        public string? Message { get; set; }
     }
 }
