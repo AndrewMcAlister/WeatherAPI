@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
 using System.IO.Pipes;
 using System.Linq;
 using System.Net;
@@ -67,6 +68,22 @@ namespace WeatherAPI.Controllers
             catch (Exception ex)
             {
                 return StatusCode(base.HttpContext.Response.StatusCode, ex.Message);
+            }
+        }
+
+        [HttpGet("World")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(IAsyncEnumerable<WeatherData>))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [LimitRequest(MaxRequests = 5, TimeWindow = 3600)]
+        public async IAsyncEnumerable<WeatherData> GetWorldCapitolWeatherStream()
+        {
+            await foreach (var wd in weatherService.GetWorldCapitalWeather(base.HttpContext))
+            {
+                yield return wd;
             }
         }
     }

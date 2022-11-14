@@ -1,5 +1,7 @@
 ﻿using Newtonsoft.Json;
+using System.Diagnostics.Metrics;
 using System.Net;
+using WeatherAPI.BusinessLogic;
 using WeatherAPI.Interfaces;
 using WeatherAPI.Models;
 
@@ -43,11 +45,7 @@ namespace WeatherAPI.Services
                     if (await rateLimiter.CanCall(context, keyTuple.cacheKey))
                     {
                         var client = new HttpClient();
-                        var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={keyTuple.apiKey}";
-                        var respStr = await client.GetStringAsync(url);
-                        if (!string.IsNullOrEmpty(respStr))
-                            wd = JsonConvert.DeserializeObject<WeatherData>(respStr);
-
+                        wd = await GetWeather(country,city,keyTuple.apiKey,client);
                         await rateLimiter.UpdateClientStatisticsAsync(context, keyTuple.cacheKey);
                     }
                     else
@@ -78,7 +76,7 @@ namespace WeatherAPI.Services
                 }
             }
 
-            if(errorMessage != string.Empty)
+            if (errorMessage != string.Empty)
                 throw new Exception(errorMessage);
 
             return wd;
@@ -98,6 +96,68 @@ namespace WeatherAPI.Services
             else
                 return String.Empty;
         }
+
+        public async IAsyncEnumerable<WeatherData> GetWorldCapitalWeather(HttpContext context)
+        {
+            WeatherData wd = new WeatherData();
+            string errorMessage = string.Empty;
+            if (weatherDataConfig.Keys.Any())
+            {
+                var keyTuple = await FindAKeyThatsNotUsedUp(context);
+                var client = new HttpClient();
+                //rate limit
+                if (await rateLimiter.CanCall(context, keyTuple.cacheKey))
+                {
+                    for (int i = 0; i < Locations.Countries.Count; i++)
+                    {
+                        await Task.Delay(100);
+                        var country = Locations.Countries[i];
+                        var city = country.Cities.First(p => p.IsCapital).Name;
+                        try
+                        {
+                            wd = await GetWeather(country.Name, city, keyTuple.apiKey, client);
+                        }
+                        catch(HttpListenerException hle)
+                        {
+                            wd.Name = city;
+                            wd.Sys.Country = country.Name;
+                            wd.StatusCode=hle.ErrorCode;
+                        }
+                        catch (Exception ex)
+                        {
+                            //just continue to stream
+                        }
+                        yield return wd;
+                    };
+                }
+                else
+                {
+                    context.Response.StatusCode = (int)HttpStatusCode.TooManyRequests;
+                    errorMessage = "The hourly limit has been exceeded";
+                }
+            }
+            else
+            {
+                context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                errorMessage = "No Api keys exist";
+            }
+        }
+
+
+        private async Task<WeatherData> GetWeather(string country, string city, string apiKey, HttpClient client)
+        {
+            WeatherData wd = new WeatherData();
+            var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={apiKey}";
+            var respStr = await client.GetStringAsync(url);
+
+            if (!string.IsNullOrEmpty(respStr))
+                wd = JsonConvert.DeserializeObject<WeatherData>(respStr)!;
+                
+            wd.Sys.Country = country;
+
+            return wd;
+        }
+
 
         /// <summary>
         /// This is our key scheme - it looks at appsettings.json to see if we are allowed to try all the keys if one is used up
@@ -126,8 +186,7 @@ namespace WeatherAPI.Services
                 }
             }
 
-            return (apiKey,cacheKey);
+            return (apiKey, cacheKey);
         }
-        
     }
 }

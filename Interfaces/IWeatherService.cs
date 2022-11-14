@@ -6,5 +6,6 @@ namespace WeatherAPI.Interfaces
     {
         Task<string> GetWeatherBrief(string country, string city, HttpContext context);
         Task<WeatherData?> GetAllWeather(string country, string city, HttpContext context);
+        IAsyncEnumerable<WeatherData> GetWorldCapitalWeather(HttpContext context);
     }
 }
