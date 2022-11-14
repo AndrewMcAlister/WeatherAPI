@@ -4,6 +4,7 @@ namespace WeatherAPI.Interfaces
 {
     public interface IWeatherService
     {
-        Task<string> GetWeatherDescription(string country, string city, HttpContext context);
+        Task<string> GetWeatherBrief(string country, string city, HttpContext context);
+        Task<WeatherData?> GetAllWeather(string country, string city, HttpContext context);
     }
 }

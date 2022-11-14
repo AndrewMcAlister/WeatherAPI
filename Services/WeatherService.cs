@@ -1,8 +1,5 @@
-﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using Microsoft.Extensions.ObjectPool;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using System.Net;
-using System.Text;
 using WeatherAPI.Interfaces;
 using WeatherAPI.Models;
 
@@ -21,41 +18,48 @@ namespace WeatherAPI.Services
             this.rateLimiter = rateLimiter;
         }
 
+        public async Task<IAsyncEnumerable<WeatherData>> Get()
+        {
+            throw new NotImplementedException();
+        }
+
         /// <summary>
         /// Just Gets Description.
         /// </summary>
         /// <param name="country"></param>
         /// <param name="city"></param>
         /// <returns></returns>
-        public async Task<string> GetWeatherDescription(string country, string city, HttpContext context)
+        public async Task<WeatherData?> GetAllWeather(string country, string city, HttpContext context)
         {
-            WeatherData wd = null;
-            string message = string.Empty;
+            WeatherData? wd = null;
+            string errorMessage = string.Empty;
             try
             {
-                if (!weatherDataConfig.Keys.Any())
+                if (weatherDataConfig.Keys.Any())
                 {
-                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-                    return "No Api keys exist";
-                }
+                    var keyTuple = await FindAKeyThatsNotUsedUp(context);
 
-                var keyTuple = await FindAKeyThatWorks(context);
+                    //rate limit
+                    if (await rateLimiter.CanCall(context, keyTuple.cacheKey))
+                    {
+                        var client = new HttpClient();
+                        var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={keyTuple.apiKey}";
+                        var respStr = await client.GetStringAsync(url);
+                        if (!string.IsNullOrEmpty(respStr))
+                            wd = JsonConvert.DeserializeObject<WeatherData>(respStr);
 
-                //rate limit
-                if (await rateLimiter.CanCall(context, keyTuple.cacheKey))
-                {
-                    var client = new HttpClient();
-                    var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={keyTuple.apiKey}";
-                    var respStr = await client.GetStringAsync(url);
-                    if (!string.IsNullOrEmpty(respStr))
-                        wd = JsonConvert.DeserializeObject<WeatherData>(respStr);
-
-                    await rateLimiter.UpdateClientStatisticsAsync(context, keyTuple.cacheKey);
+                        await rateLimiter.UpdateClientStatisticsAsync(context, keyTuple.cacheKey);
+                    }
+                    else
+                    {
+                        context.Response.StatusCode = (int)HttpStatusCode.TooManyRequests;
+                        errorMessage = "The hourly limit has been exceeded";
+                    }
                 }
                 else
                 {
-                    message = "The hourly limit has been exceeded"; 
-                    context.Response.StatusCode = (int)HttpStatusCode.TooManyRequests;
+                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                    errorMessage = "No Api keys exist";
                 }
             }
             catch (Exception ex)
@@ -64,20 +68,35 @@ namespace WeatherAPI.Services
                 {
                     //remote site incorrectly throws 404, not found (normally intended for missing web pages)
                     //could be wrong user input or could be corrent, but no data, so not an error, use whatever status code the remote site gave us
-                    message = "No weather was found for that location";
                     context.Response.StatusCode = (int)HttpStatusCode.NotFound;
+                    errorMessage = "No weather was found for that location";
                 }
                 else
                 {
-                    message = ex.Message;
+                    errorMessage = ex.Message;
                     context.Response.StatusCode = (int)HttpStatusCode.InternalServerError; //we don't know without user parameter validation enhancement
                 }
             }
 
-            if (wd != null)
-                message = string.Join(" and ", wd.Weather.Select(p => p.Description));
+            if(errorMessage != string.Empty)
+                throw new Exception(errorMessage);
 
-            return message;
+            return wd;
+        }
+
+        /// <summary>
+        /// Just Gets Description.
+        /// </summary>
+        /// <param name="country"></param>
+        /// <param name="city"></param>
+        /// <returns></returns>
+        public async Task<string> GetWeatherBrief(string country, string city, HttpContext context)
+        {
+            WeatherData? wd = await GetAllWeather(country, city, context);
+            if (wd != null)
+                return string.Join(" and ", wd.Weather.Select(p => p.Description));
+            else
+                return String.Empty;
         }
 
         /// <summary>
@@ -85,7 +104,7 @@ namespace WeatherAPI.Services
         /// </summary>
         /// <param name="context"></param>
         /// <returns></returns>
-        private async Task<(string apiKey, string cacheKey)> FindAKeyThatWorks(HttpContext context)
+        private async Task<(string apiKey, string cacheKey)> FindAKeyThatsNotUsedUp(HttpContext context)
         {
             string cacheKey = string.Empty;
             string apiKey = string.Empty;

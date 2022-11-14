@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using System.IO.Pipes;
+using System.Linq;
 using System.Net;
+using System.Text;
 using WeatherAPI.Interfaces;
 using WeatherAPI.Models;
 
@@ -21,25 +23,50 @@ namespace WeatherAPI.Controllers
         }
 
         [HttpGet]
-        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(APIResponse<string>))]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(APIResponse<WeatherData?>))]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [LimitRequest(MaxRequests = 5, TimeWindow = 3600)]
-        public async Task<ActionResult> GetAsync(string country, string city)
+        public async Task<ActionResult<WeatherData?>> GetAsync(string country, string city)
+        {
+            var apiResponse = new APIResponse<WeatherData?>();
+            try
+            {
+                var weatherData = await weatherService.GetAllWeather(country, city, base.HttpContext);
+                apiResponse = new APIResponse<WeatherData?>() { Data = weatherData, StatusCode = (HttpStatusCode)base.HttpContext.Response.StatusCode, Message="" };
+
+                return StatusCode(base.HttpContext.Response.StatusCode, apiResponse);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(base.HttpContext.Response.StatusCode, ex.Message);
+            }
+        }
+
+        [HttpGet("Brief")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(APIResponse<string>))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [LimitRequest(MaxRequests = 5, TimeWindow = 3600)]
+        public async Task<ActionResult<string>> GetAsyncDesc(string country, string city)
         {
             var apiResponse = new APIResponse<string>();
             try
             {
-                var weatherData = await weatherService.GetWeatherDescription(country, city, base.HttpContext);
-                var resp = new APIResponse<string>() { StatusCode = (HttpStatusCode)base.HttpContext.Response.StatusCode, Message= weatherData };
+                var weatherData = await weatherService.GetWeatherBrief(country, city, base.HttpContext);
+                var resp = new APIResponse<string>() { StatusCode = (HttpStatusCode)base.HttpContext.Response.StatusCode, Message = weatherData };
 
                 return StatusCode(base.HttpContext.Response.StatusCode, resp);
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError,ex.Message);
+                return StatusCode(base.HttpContext.Response.StatusCode, ex.Message);
             }
         }
     }
