@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Versioning;
 using WeatherAPI.BusinessLogic;
-using WeatherAPI.Interfaces;
-using WeatherAPI.Models;
+using WeatherTypes.Interfaces;
 using WeatherAPI.Services;
+using WeatherTypes.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,6 +39,7 @@ builder.Services.AddApiVersioning(opt =>
 
 var app = builder.Build();
 
+app.UseHttpLogging();
 // Configure the HTTP request pipeline.Failed to load API definition
 if (app.Environment.IsDevelopment())
 {

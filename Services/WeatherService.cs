@@ -1,9 +1,9 @@
 ﻿using Newtonsoft.Json;
-using System.Diagnostics.Metrics;
 using System.Net;
 using WeatherAPI.BusinessLogic;
-using WeatherAPI.Interfaces;
-using WeatherAPI.Models;
+using WeatherAPI.Controllers;
+using WeatherTypes.Interfaces;
+using WeatherTypes.Models;
 
 namespace WeatherAPI.Services
 {
@@ -11,13 +11,15 @@ namespace WeatherAPI.Services
     {
         private readonly IWeatherDataConfig weatherDataConfig;
         private readonly IRateLimiter rateLimiter;
+        private readonly ILogger logger;
 
         private const string apiVersion = "2.5"; //we might have another similar classes written to other versions
 
-        public WeatherService(IWeatherDataConfig weatherDataConfig, IRateLimiter rateLimiter)
+        public WeatherService(IWeatherDataConfig weatherDataConfig, IRateLimiter rateLimiter, ILogger<WeatherController> logger)
         {
             this.weatherDataConfig = weatherDataConfig;
             this.rateLimiter = rateLimiter;
+            this.logger = logger;
         }
 
         public async Task<IAsyncEnumerable<WeatherData>> Get()
@@ -31,9 +33,9 @@ namespace WeatherAPI.Services
         /// <param name="country"></param>
         /// <param name="city"></param>
         /// <returns></returns>
-        public async Task<WeatherData?> GetAllWeather(string country, string city, HttpContext context)
+        public async Task<WeatherData> GetAllWeather(string country, string city, HttpContext context)
         {
-            WeatherData? wd = null;
+            WeatherData wd = new WeatherData();
             string errorMessage = string.Empty;
             try
             {
@@ -45,7 +47,7 @@ namespace WeatherAPI.Services
                     if (await rateLimiter.CanCall(context, keyTuple.cacheKey))
                     {
                         var client = new HttpClient();
-                        wd = await GetWeather(country,city,keyTuple.apiKey,client);
+                        wd = await GetWeather(country, city, keyTuple.apiKey, client);
                         await rateLimiter.UpdateClientStatisticsAsync(context, keyTuple.cacheKey);
                     }
                     else
@@ -110,18 +112,18 @@ namespace WeatherAPI.Services
                 {
                     for (int i = 0; i < Locations.Countries.Count; i++)
                     {
-                        await Task.Delay(100);
+                        //await Task.Delay(1000);
                         var country = Locations.Countries[i];
                         var city = country.Cities.First(p => p.IsCapital).Name;
                         try
                         {
                             wd = await GetWeather(country.Name, city, keyTuple.apiKey, client);
                         }
-                        catch(HttpListenerException hle)
+                        catch (HttpListenerException hle)
                         {
                             wd.Name = city;
                             wd.Sys.Country = country.Name;
-                            wd.StatusCode=hle.ErrorCode;
+                            wd.StatusCode = hle.ErrorCode;
                         }
                         catch (Exception ex)
                         {
@@ -149,10 +151,10 @@ namespace WeatherAPI.Services
             WeatherData wd = new WeatherData();
             var url = $"{weatherDataConfig.BaseUrl}/{apiVersion}/weather?q={city},{country}&appid={apiKey}";
             var respStr = await client.GetStringAsync(url);
-
+            //logger.LogInformation(apiKey, client);
             if (!string.IsNullOrEmpty(respStr))
                 wd = JsonConvert.DeserializeObject<WeatherData>(respStr)!;
-                
+
             wd.Sys.Country = country;
 
             return wd;

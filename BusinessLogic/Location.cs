@@ -1,5 +1,5 @@
 ﻿using System.Security.Authentication;
-using WeatherAPI.Models;
+using WeatherTypes.Models;
 
 namespace WeatherAPI.BusinessLogic
 {

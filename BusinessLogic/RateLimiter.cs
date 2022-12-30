@@ -1,9 +1,7 @@
-﻿using System.Net;
-using WeatherAPI.Models;
-using Microsoft.Extensions.Caching.Distributed;
+﻿using Microsoft.Extensions.Caching.Distributed;
 using WeatherAPI.Extensions;
-using WeatherAPI.Interfaces;
-using Microsoft.AspNetCore.Http;
+using WeatherTypes.Interfaces;
+using WeatherTypes.Models;
 
 namespace WeatherAPI.BusinessLogic
 {
